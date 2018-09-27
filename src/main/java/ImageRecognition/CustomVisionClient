@@ -1,0 +1,88 @@
+package ImageRecognition;
+
+import java.io.File;
+import java.io.IOException;
+import java.net.URI;
+import java.net.URISyntaxException;
+import java.util.HashSet;
+import java.util.Iterator;
+import java.util.Set;
+
+import org.apache.http.HttpEntity;
+import org.apache.http.HttpResponse;
+import org.apache.http.client.HttpClient;
+import org.apache.http.client.methods.HttpPost;
+import org.apache.http.client.utils.URIBuilder;
+import org.apache.http.entity.ContentType;
+import org.apache.http.entity.FileEntity;
+import org.apache.http.impl.client.HttpClients;
+import org.apache.http.util.EntityUtils;
+
+import org.json.simple.JSONArray;
+import org.json.simple.JSONObject;
+import org.json.simple.parser.*;
+
+public class AzureAPI {
+    // TODO: move config to seperate file
+    public static final HttpClient HTTP_CLIENT = HttpClients.createDefault();
+    public static final String IMAGE_TO_ANALYZE = ""; // put relative file path here
+    public static final String API_KEY = ""; // put API key Here
+    public static final String CUSTOM_MODEL_URL = "";
+
+    public static final double MINIMUM_THRESHOLD = 0.5;
+
+    public static Set<String> analyzeImage(String path) {
+        Set<String> result = new HashSet<String>();
+        try
+        {
+            HttpEntity entity = this.sendRequest(path);
+
+            while (entity == null)
+            {
+                Thread.sleep(1000);
+                entity = sendRequest(path);
+            }
+
+            String jsonResult = EntityUtils.toString(entity);
+
+            JSONParser parser = new JSONParser();
+            JSONObject jo = (JSONObject) parser.parse(jsonResult);
+
+            JSONArray predictions = (JSONArray) jo.get("predictions");
+            Iterator products = predictions.iterator();
+
+            while (products.hasNext()) {
+                JSONObject product = (JSONObject) products.next();
+                double productProbability = ((Number) product.get("probability")).doubleValue();
+
+                if (productProbability >= MINIMUM_THRESHOLD) {
+                    result.add((String) product.get("tagName"));
+                }
+            }
+        }
+        catch (Exception e)
+        {
+            // TODO: Do some error handling
+        }
+        return result;
+    }
+
+    private static HttpEntity sendRequest(String path) throws IOException, URISyntaxException, InterruptedException {
+        URIBuilder builder = new URIBuilder(CUSTOM_MODEL_URL);
+        URI uri = builder.build();
+        HttpPost request = new HttpPost(uri);
+
+        // using image
+        request.setHeader("Prediction-Key", API_KEY); // include API Key Here
+        request.setHeader("Content-Type", "application/octet-stream");
+
+        // Request body
+        File img = new File(path);
+        FileEntity reqEntity = new FileEntity(img, ContentType.APPLICATION_OCTET_STREAM);
+        request.setEntity(reqEntity);
+
+        HttpResponse response = HTTP_CLIENT.execute(request);
+
+        return response.getEntity();
+    }
+}
